@@ -1,4 +1,5 @@
 import { pinecone } from '../config/pinecone';
+import logger from './logger';
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
@@ -11,7 +12,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const embeddings = (result as any).data || result;
     return embeddings[0].values;
   } catch (error) {
-    console.error('Pinecone embedding error:', error);
+    logger.error('Pinecone embedding error:', error);
     throw error;
   }
 }
@@ -36,7 +37,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
     return allEmbeddings;
   } catch (error) {
-    console.error('Pinecone batch embedding error:', error);
+    logger.error('Pinecone batch embedding error:', error);
     throw error;
   }
 }

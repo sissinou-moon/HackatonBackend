@@ -1,7 +1,8 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { chatWithDocuments, chatWithDocumentsStream } from '../services/chatService';
+import logger from '../utils/logger';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -29,7 +30,7 @@ router.post('/', async (req: Request, res: Response) => {
       sources: result.sources,
     });
   } catch (error) {
-    console.error('Chat route error:', error);
+    logger.error('Chat route error:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',

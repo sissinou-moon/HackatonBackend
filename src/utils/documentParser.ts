@@ -1,6 +1,7 @@
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import fs from 'fs/promises';
+import logger from './logger';
 
 export interface ParsedDocument {
   text: string;
@@ -29,7 +30,7 @@ export async function parsePDF(filePath: string, fileName: string): Promise<Pars
       },
     };
   } catch (error) {
-    console.error('Error parsing PDF:', error);
+    logger.error('Error parsing PDF:', error);
     throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -50,7 +51,7 @@ export async function parseWord(filePath: string, fileName: string): Promise<Par
       },
     };
   } catch (error) {
-    console.error('Error parsing Word document:', error);
+    logger.error('Error parsing Word document:', error);
     throw new Error(`Failed to parse Word document: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

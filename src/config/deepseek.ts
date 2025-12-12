@@ -1,5 +1,6 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
+import logger from '../utils/logger';
 
 dotenv.config({ path: '.env.local' });
 
@@ -20,14 +21,17 @@ export async function chatWithDeepSeek(
   temperature: number = 0.7
 ): Promise<string> {
   try {
+    const requestBody = {
+      model: 'deepseek-v3.1',
+      messages,
+      temperature,
+      stream: false,
+    };
+    logger.log('DeepSeek Request:', JSON.stringify(requestBody, null, 2));
+
     const response = await axios.post(
       DEEPSEEK_API_URL,
-      {
-        model: 'deepseek-v3.1',
-        messages,
-        temperature,
-        stream: false,
-      },
+      requestBody,
       {
         headers: {
           Authorization: `Bearer ${DEEPSEEK_TOKEN}`,
@@ -36,9 +40,13 @@ export async function chatWithDeepSeek(
       }
     );
 
+    logger.log('DeepSeek Response Status:', response.status);
+    logger.log('DeepSeek Response Headers:', JSON.stringify(response.headers, null, 2));
+    logger.log('DeepSeek Response Data:', JSON.stringify(response.data, null, 2));
+
     return response.data.choices[0]?.message?.content || 'No response from DeepSeek';
   } catch (error: any) {
-    console.error('DeepSeek API Error:', error.response?.data || error.message);
+    logger.error('DeepSeek API Error:', error.response?.data || error.message);
     throw new Error(`DeepSeek API error: ${error.response?.data?.error?.message || error.message}`);
   }
 }
@@ -51,15 +59,18 @@ export async function chatWithDeepSeekStream(
   temperature: number = 0.7
 ): Promise<void> {
   try {
+    const requestBody = {
+      model: 'deepseek-v3.1',
+      messages,
+      temperature,
+      seed: 42,
+      stream: true,
+    };
+    logger.log('DeepSeek Stream Request:', JSON.stringify(requestBody, null, 2));
+
     const response = await axios.post(
       DEEPSEEK_API_URL,
-      {
-        model: 'deepseek-v3.1',
-        messages,
-        temperature,
-        seed: 42,
-        stream: true,
-      },
+      requestBody,
       {
         headers: {
           Authorization: `Bearer ${DEEPSEEK_TOKEN}`,
@@ -70,9 +81,13 @@ export async function chatWithDeepSeekStream(
       }
     );
 
+    logger.log('DeepSeek Stream Response Status:', response.status);
+    logger.log('DeepSeek Stream Headers:', JSON.stringify(response.headers, null, 2));
+
     const stream = response.data;
 
     let buffer = '';
+    let fullContent = '';
 
     const findMatchingBrace = (s: string, start: number) => {
       let depth = 0;
@@ -88,41 +103,54 @@ export async function chatWithDeepSeekStream(
     };
 
     stream.on('data', (chunk: any) => {
+      logger.log('DeepSeek Stream Raw Chunk:', chunk.toString());
       try {
         buffer += chunk.toString();
 
         // Process as many complete messages as available
         while (true) {
-          const dataIndex = buffer.indexOf('data:');
-          const braceIndex = buffer.indexOf('{');
+          buffer = buffer.trimStart();
+          if (!buffer) break;
 
-          if (dataIndex === -1 && braceIndex === -1) break;
+          if (buffer.startsWith('data: [DONE]')) {
+            if (onDone) onDone();
+            buffer = buffer.slice(12);
+            continue;
+          }
 
-          // Prefer SSE-style 'data:' entries when present
-          const startIdx = dataIndex !== -1 ? dataIndex + 5 : braceIndex;
-          const jsonStart = buffer.indexOf('{', startIdx);
-          if (jsonStart === -1) break; // incomplete
+          let jsonStart = -1;
+          if (buffer.startsWith('data:')) {
+            jsonStart = buffer.indexOf('{');
+            if (jsonStart === -1) {
+              // If we have a newline but no '{', it's a garbage line
+              if (buffer.includes('\n')) {
+                buffer = buffer.slice(buffer.indexOf('\n') + 1);
+                continue;
+              }
+              break; // Wait for more data
+            }
+          } else if (buffer.startsWith('{')) {
+            jsonStart = 0;
+          } else {
+            // Garbage or unknown format, skip line
+            const newline = buffer.indexOf('\n');
+            if (newline === -1) break;
+            buffer = buffer.slice(newline + 1);
+            continue;
+          }
 
           const jsonEnd = findMatchingBrace(buffer, jsonStart);
           if (jsonEnd === -1) break; // incomplete
 
           const jsonStr = buffer.slice(jsonStart, jsonEnd + 1);
-          // Remove processed part from buffer
           buffer = buffer.slice(jsonEnd + 1);
 
-          // Trim possible prefixes like "data:\n"
           let parsed: any;
           try {
             parsed = JSON.parse(jsonStr);
+            // console.log('DeepSeek Stream Parsed Chunk:', JSON.stringify(parsed, null, 2));
           } catch (e) {
-            // if parse fails, continue to next
-            console.warn('Failed to parse JSON chunk from DeepSeek stream', e);
-            continue;
-          }
-
-          // Handle special done marker
-          if (typeof parsed === 'string' && parsed === '[DONE]') {
-            if (onDone) onDone();
+            logger.warn('Failed to parse JSON chunk from DeepSeek stream', e);
             continue;
           }
 
@@ -130,37 +158,37 @@ export async function chatWithDeepSeekStream(
           const choices = parsed?.choices;
           if (Array.isArray(choices)) {
             for (const choice of choices) {
-              // Some chunks only contain finish info
               if (choice?.delta?.content) {
-                onChunk(choice.delta.content);
+                const content = choice.delta.content;
+                fullContent += content;
+                onChunk(content);
               }
               if (choice?.finish_reason) {
-                // If model finished, call onDone
                 if (choice.finish_reason === 'stop' && onDone) onDone();
               }
             }
           } else {
-            // If it's a final object with usage or other metadata, call onDone
             if (parsed?.usage || parsed?.id) {
               if (onDone) onDone();
             }
           }
         }
       } catch (e) {
-        console.warn('Error processing DeepSeek chunk', e);
+        logger.warn('Error processing DeepSeek chunk', e);
       }
     });
 
     stream.on('end', () => {
+      logger.log('DeepSeek Stream Full Response (Accumulated):', fullContent);
       if (onDone) onDone();
     });
 
     stream.on('error', (err: any) => {
-      console.error('DeepSeek stream error:', err);
+      logger.error('DeepSeek stream error:', err);
       if (onDone) onDone();
     });
   } catch (error: any) {
-    console.error('DeepSeek streaming error:', error.response?.data || error.message);
+    logger.error('DeepSeek streaming error:', error.response?.data || error.message);
     throw new Error(`DeepSeek streaming error: ${error.response?.data?.error?.message || error.message}`);
   }
 }

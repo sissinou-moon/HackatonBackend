@@ -1,7 +1,8 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { supabase, BUCKET_NAME } from '../config/supabase';
+import logger from '../utils/logger';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 router.get('/:fileName', async (req: Request, res: Response) => {
   try {
@@ -17,7 +18,7 @@ router.get('/:fileName', async (req: Request, res: Response) => {
       .download(fileName);
 
     if (error) {
-      console.error('Download error:', error);
+      logger.error('Download error:', error);
       return res.status(404).json({ error: `File not found: ${error.message}` });
     }
 
@@ -41,7 +42,7 @@ router.get('/:fileName', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(buffer);
   } catch (error) {
-    console.error('Download route error:', error);
+    logger.error('Download route error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     });
@@ -68,7 +69,7 @@ router.get('/', async (req: Request, res: Response) => {
       })) || [],
     });
   } catch (error) {
-    console.error('List files error:', error);
+    logger.error('List files error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     });

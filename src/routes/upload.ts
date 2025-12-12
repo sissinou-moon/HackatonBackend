@@ -1,10 +1,11 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 import { uploadDocument } from '../services/uploadService';
+import logger from '../utils/logger';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -61,7 +62,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Upload route error:', error);
+    logger.error('Upload route error:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
