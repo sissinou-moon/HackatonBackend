@@ -1,4 +1,4 @@
-import { chatWithDeepSeek, ChatMessage } from '../config/deepseek';
+import { chatWithModel, ChatMessage } from '../config/deepseek';
 import logger from '../utils/logger';
 
 export interface RefinedQuery {
@@ -8,38 +8,49 @@ export interface RefinedQuery {
   entities: string[];
   isAmbiguous: boolean;
 }
+const GHOST_PROMPT_SYSTEM = `You are a LIGHT query-refinement assistant for Algérie Télécom’s Front Office document retrieval system.
 
-const GHOST_PROMPT_SYSTEM = `You are a query refinement assistant for Algerie Telecom's document retrieval system.
-Your job is to transform user queries into optimized search queries.
+Your goal is NOT to rewrite queries aggressively.
+Your goal is ONLY to:
+1) resolve ambiguity,
+2) add missing Algérie Télécom context when needed,
+3) keep the query close to the user’s original wording.
 
-Context: This system is used in Algerie Telecom's communication center to retrieve documents about:
-- Offers and promotions (internet, mobile, bundles)
-- Contracts and subscriptions (terms, renewal, cancellation)
-- Gaming packs and services
-- Billing and payments
-- Technical support and troubleshooting
-- Enterprise/B2B services
-- 4G/5G, Fibre, ADSL services
+Rules:
+- Preserve the user's key keywords and phrasing.
+- Only add context tokens when they are clearly missing (e.g., "Algérie Télécom", "Idoom Fibre", "ADSL", "4G LTE", "FTTH", "facture", "paiement", "résiliation", "NGBSS").
+- Do NOT add long OR lists (no game lists, no marketing buzzwords).
+- Do NOT broaden to other domains unless the user is ambiguous.
+- If the query is already specific, return it unchanged (isAmbiguous=false).
+- Add at most 2–5 extra tokens total.
 
-When given a user query, you must:
-1. Identify the user's intent
-2. Extract key entities (product names, service types, actions)
-3. Expand ambiguous terms to specific Algerie Telecom context
-4. Create an optimized query for document retrieval
-
-Respond ONLY with valid JSON in this exact format:
+Output ONLY valid JSON in this schema:
 {
-  "refinedQuery": "the optimized search query in the same language as input",
-  "intent": "brief description of user intent",
-  "entities": ["entity1", "entity2"],
+  "refinedQuery": "string (same language as input)",
+  "intent": "short intent",
+  "entities": ["string", "string"],
   "isAmbiguous": true/false
 }`;
 
 const GHOST_PROMPT_EXAMPLES = `Examples:
-User: "what's the deal?" → {"refinedQuery": "offres promotions actuelles Algerie Telecom", "intent": "looking for current promotional offers", "entities": ["offers", "promotions"], "isAmbiguous": true}
-User: "gaming" → {"refinedQuery": "packs gaming forfaits jeux PUBG Free Fire Mobile Legends", "intent": "looking for gaming-related services", "entities": ["gaming packs", "game data"], "isAmbiguous": true}
-User: "comment payer" → {"refinedQuery": "méthodes paiement facture CCP Edahabia Baridi Mob", "intent": "looking for payment methods", "entities": ["payment", "bill"], "isAmbiguous": true}
-User: "fibre optic 100mb price" → {"refinedQuery": "tarif prix offre fibre optique 100 Mbps FTTH", "intent": "pricing for 100Mbps fiber", "entities": ["fiber", "100Mbps", "price"], "isAmbiguous": false}`;
+User: "gaming" →
+{"refinedQuery":"offre Gamers Algérie Télécom","intent":"find gamers offer","entities":["Gamers"],"isAmbiguous":true}
+
+User: "what's the deal?" →
+{"refinedQuery":"offres promotions Algérie Télécom","intent":"find current promotions","entities":["offres","promotions"],"isAmbiguous":true}
+
+User: "cheapest GAMES offer" →
+{"refinedQuery":"offre Gamers Algérie Télécom prix moins cher","intent":"find cheapest gamers offer","entities":["Gamers","prix"],"isAmbiguous":true}
+
+User: "fibre 100mb price" →
+{"refinedQuery":"fibre FTTH 100 Mbps prix Algérie Télécom","intent":"price for 100 Mbps fiber","entities":["FTTH","100 Mbps","prix"],"isAmbiguous":false}
+
+User: "comment payer facture" →
+{"refinedQuery":"paiement facture Algérie Télécom","intent":"how to pay bill","entities":["paiement","facture"],"isAmbiguous":false}
+
+User: "NGBSS activer offre Gamers" →
+{"refinedQuery":"NGBSS activation offre Gamers","intent":"NGBSS activation steps","entities":["NGBSS","Gamers"],"isAmbiguous":false}`;
+
 
 /**
  * Use a lightweight LLM call to refine ambiguous queries for better retrieval.
@@ -61,7 +72,7 @@ export async function refineQueryWithGhostPrompt(query: string): Promise<Refined
     logger.log('[GhostPrompt] Refining query:', query);
     
     // Use low temperature for consistent, focused responses
-    const response = await chatWithDeepSeek(messages, 0.1);
+    const response = await chatWithModel(messages, 0.1, 'o4-mini');
     
     // Parse the JSON response
     const jsonMatch = response.match(/\{[\s\S]*\}/);

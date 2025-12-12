@@ -16,17 +16,19 @@ export interface ChatMessage {
   content: string;
 }
 
-export async function chatWithDeepSeek(
+export async function chatWithModel(
   messages: ChatMessage[],
-  temperature: number = 0.7
+  temperature: number = 0.7,
+  model: string = 'deepseek-v3.1'
 ): Promise<string> {
   try {
     const requestBody = {
-      model: 'deepseek-v3.1',
+      model,
       messages,
       temperature,
       stream: false,
     };
+
     logger.log('DeepSeek Request:', JSON.stringify(requestBody, null, 2));
 
     const response = await axios.post(
@@ -47,9 +49,12 @@ export async function chatWithDeepSeek(
     return response.data.choices[0]?.message?.content || 'No response from DeepSeek';
   } catch (error: any) {
     logger.error('DeepSeek API Error:', error.response?.data || error.message);
-    throw new Error(`DeepSeek API error: ${error.response?.data?.error?.message || error.message}`);
+    throw new Error(
+      `DeepSeek API error: ${error.response?.data?.error?.message || error.message}`
+    );
   }
 }
+
 
 // Stream-supporting wrapper. Calls `onChunk` for each raw chunk received from DeepSeek.
 export async function chatWithDeepSeekStream(
@@ -103,7 +108,7 @@ export async function chatWithDeepSeekStream(
     };
 
     stream.on('data', (chunk: any) => {
-      logger.log('DeepSeek Stream Raw Chunk:', chunk.toString());
+      // logger.log('DeepSeek Stream Raw Chunk:', chunk.toString());
       try {
         buffer += chunk.toString();
 
