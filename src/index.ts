@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import uploadRouter from './routes/upload';
 import chatRouter from './routes/chat';
 import downloadRouter from './routes/download';
+import roomRouter from './routes/room';
 
 dotenv.config({ path: '.env.local' });
 
@@ -19,6 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/upload', uploadRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/download', downloadRouter);
+app.use('/api/room', roomRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -35,6 +37,13 @@ app.get('/', (req, res) => {
       download: 'GET /api/download/:fileName',
       listFiles: 'GET /api/download',
       health: 'GET /health',
+      rooms: {
+        getAll: 'GET /api/room',
+        getOne: 'GET /api/room/:id',
+        create: 'POST /api/room',
+        update: 'PUT /api/room/:id',
+        delete: 'DELETE /api/room/:id',
+      },
     },
   });
 });
