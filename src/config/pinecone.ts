@@ -11,9 +11,15 @@ export const pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY,
 });
 
-export const INDEX_NAME = process.env.PINECONE_INDEX || 'realhackaton';
+export const INDEX_NAME = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || 'realhackaton';
+
+console.log('🔍 Pinecone Index Configuration:');
+console.log('   PINECONE_INDEX_NAME:', process.env.PINECONE_INDEX_NAME);
+console.log('   PINECONE_INDEX:', process.env.PINECONE_INDEX);
+console.log('   → Using INDEX_NAME:', INDEX_NAME);
 
 export async function getPineconeIndex() {
+    console.log('📍 getPineconeIndex() called - Using index:', INDEX_NAME);
     const index = pinecone.index(INDEX_NAME);
     return index;
 }

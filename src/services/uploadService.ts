@@ -23,7 +23,19 @@ export async function uploadDocument(filePath: string, fileName: string): Promis
     console.log(`Uploading to Supabase: ${fileName}`);
     const fileBuffer = await fs.readFile(filePath);
     const fileExt = path.extname(fileName);
-    const uniqueFileName = `${Date.now()}-${fileName}`;
+
+    // Sanitize file name to avoid invalid storage keys (remove diacritics and unsafe chars)
+    const normalizeFileName = (name: string) => {
+      // Normalize Unicode (NFKD) and strip combining marks (accents)
+      const decomposed = name.normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+      // Replace any path separators or unsafe characters with '-'
+      const safe = decomposed.replace(/[/\\\\?%*:|"<>]/g, '-').replace(/[^\w.\-\s]/g, '-');
+      // Collapse spaces to single dash and trim
+      return safe.replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    };
+
+    const safeName = normalizeFileName(fileName);
+    const uniqueFileName = `${Date.now()}-${safeName}`;
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)

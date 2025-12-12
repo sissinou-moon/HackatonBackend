@@ -14,7 +14,7 @@ export interface ChatResponse {
 export async function chatWithDocuments(question: string, topK: number = 3): Promise<ChatResponse> {
   try {
     // 1. Generate embedding for the question
-    console.log('Generating question embedding...');
+    console.log('Processing your query...');
     const questionEmbedding = await generateEmbedding(question);
 
     // 2. Search similar chunks in Pinecone
@@ -86,12 +86,43 @@ export async function chatWithDocumentsStream(
   topK: number = 3
 ): Promise<void> {
   try {
+    // Setup response for SSE
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    const sendSSE = (eventType: string, data: any) => {
+      try {
+        res.write(`event: ${eventType}\n`);
+        if (typeof data === 'string') {
+          res.write(`data: ${data}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      } catch (e) {
+        console.warn('Error sending SSE', e);
+      }
+    };
+
     // 1. Generate embedding for the question
     console.log('Generating question embedding (stream)...');
+    sendSSE('step', { step: 'embedding', status: 'processing', label: 'Embedding query...' });
+    
+    const startTime = Date.now();
     const questionEmbedding = await generateEmbedding(question);
+    const embeddingTime = Date.now() - startTime;
+    
+    console.log(`✓ Embedding completed in ${embeddingTime}ms`);
+    sendSSE('step', { step: 'embedding', status: 'completed', label: 'Embedding query...', duration: embeddingTime });
 
     // 2. Search similar chunks in Pinecone
     console.log('Searching for relevant documents (stream)...');
+    sendSSE('step', { step: 'retrieval', status: 'processing', label: 'Retrieving relevant chunks...' });
+    
+    const retrievalStart = Date.now();
     const index = await getPineconeIndex();
 
     const results = await index.query({
@@ -99,8 +130,16 @@ export async function chatWithDocumentsStream(
       topK: topK,
       includeMetadata: true,
     });
+    
+    const retrievalTime = Date.now() - retrievalStart;
+    console.log(`✓ Retrieved ${results.matches?.length || 0} chunks in ${retrievalTime}ms`);
+    sendSSE('step', { step: 'retrieval', status: 'completed', label: 'Retrieving relevant chunks...', count: results.matches?.length || 0, duration: retrievalTime });
 
     // 3. Extract relevant context
+    console.log('Extracting context from retrieved chunks...');
+    sendSSE('step', { step: 'processing', status: 'processing', label: 'Processing chunks...' });
+    
+    const processingStart = Date.now();
     const sources: ChatResponse['sources'] = [];
     const contexts: string[] = [];
 
@@ -121,6 +160,10 @@ export async function chatWithDocumentsStream(
         }
       }
     }
+    
+    const processingTime = Date.now() - processingStart;
+    console.log(`✓ Processed ${sources.length} sources in ${processingTime}ms`);
+    sendSSE('step', { step: 'processing', status: 'completed', label: 'Processing chunks...', count: sources.length, duration: processingTime });
 
     // 4. Build prompt with context
     const contextText = contexts.join('\n\n');
@@ -137,37 +180,29 @@ export async function chatWithDocumentsStream(
       },
     ];
 
-    // 5. Start streaming from DeepSeek and forward to client as SSE-style events
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
+    // 5. Stream answer from DeepSeek
+    console.log('Starting DeepSeek streaming...');
+    sendSSE('step', { step: 'generation', status: 'processing', label: 'Generating answer...' });
 
-    const sendSSE = (data: string) => {
-      // Normalize newlines so frontend can parse
-      const lines = data.split(/\r?\n/).filter(Boolean);
-      for (const line of lines) {
-        // Send as data: <chunk>\n\n
-        res.write(`data: ${line}\n\n`);
-      }
-    };
+    const generationStart = Date.now();
 
     await chatWithDeepSeekStream(
       messages,
       (chunk) => {
         try {
-          sendSSE(chunk);
+          sendSSE('message', chunk);
         } catch (e) {
           console.warn('Error sending SSE chunk', e);
         }
       },
       () => {
-        // On done, send final event with sources and end
+        // On done, send step completion and sources
+        const generationTime = Date.now() - generationStart;
         try {
-          res.write(`event: done\n`);
-          res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+          sendSSE('step', { step: 'generation', status: 'completed', label: 'Generating answer...', duration: generationTime });
+          console.log(`✓ Answer generated in ${generationTime}ms`);
+          
+          sendSSE('done', { sources });
         } catch (e) {
           console.warn('Error sending final SSE', e);
         }
@@ -177,8 +212,7 @@ export async function chatWithDocumentsStream(
   } catch (error) {
     console.error('Chat stream error:', error);
     try {
-      res.write(`event: error\n`);
-      res.write(`data: ${JSON.stringify({ message: error instanceof Error ? error.message : String(error) })}\n\n`);
+      sendSSE('error', { message: error instanceof Error ? error.message : String(error) });
       res.end();
     } catch (e) {
       // ignore
