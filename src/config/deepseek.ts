@@ -57,6 +57,7 @@ export async function chatWithDeepSeekStream(
         model: 'deepseek-v3.1',
         messages,
         temperature,
+        seed: 42,
         stream: true,
       },
       {
