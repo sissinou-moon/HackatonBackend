@@ -6,6 +6,7 @@ import chatRouter from './routes/chat';
 import downloadRouter from './routes/download';
 import cacheRouter from './routes/cache';
 import roomRouter from './routes/room';
+import authRouter from './routes/auth';
 import logger from './utils/logger';
 
 dotenv.config({ path: '.env.local' });
@@ -24,6 +25,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/download', downloadRouter);
 app.use('/api/cache', cacheRouter);
 app.use('/api/room', roomRouter);
+app.use('/api/auth', authRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -43,6 +45,13 @@ app.get('/', (req, res) => {
       cacheStatus: 'GET /api/cache/status',
       cacheClear: 'DELETE /api/cache/clear',
       health: 'GET /health',
+      authRegister: 'POST /api/auth/register',
+      authLogin: 'POST /api/auth/login',
+      authLogout: 'POST /api/auth/logout',
+      authUser: 'GET /api/auth/user',
+      authRefresh: 'POST /api/auth/refresh',
+      authResetPassword: 'POST /api/auth/reset-password',
+      authUpdatePassword: 'POST /api/auth/update-password',
     },
   });
 });
