@@ -5,6 +5,7 @@ import uploadRouter from './routes/upload';
 import chatRouter from './routes/chat';
 import downloadRouter from './routes/download';
 import cacheRouter from './routes/cache';
+import roomRouter from './routes/room';
 import logger from './utils/logger';
 
 dotenv.config({ path: '.env.local' });
@@ -22,6 +23,7 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/download', downloadRouter);
 app.use('/api/cache', cacheRouter);
+app.use('/api/room', roomRouter);
 
 // Health check
 app.get('/health', (req, res) => {

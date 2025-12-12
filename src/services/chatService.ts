@@ -5,9 +5,9 @@ import { refineQueryWithGhostPrompt, isQueryLikelyAmbiguous } from '../utils/gho
 import { rerankDocuments, RetrievedDocument, getInitialRetrievalCount, getFinalResultCount } from '../utils/reranker';
 import { checkCache, addToCache } from './cacheService';
 import logger from '../utils/logger';
-import { 
-  createQueryLog, startStep, endStep, finalizeQueryLog, 
-  markCacheHit, setRefinedQuery, QueryLog 
+import {
+  createQueryLog, startStep, endStep, finalizeQueryLog,
+  markCacheHit, setRefinedQuery, QueryLog
 } from '../utils/queryLogger';
 
 export interface ChatResponse {
@@ -28,20 +28,20 @@ export interface ChatResponse {
 
 export async function chatWithDocuments(question: string, topK: number = 10): Promise<ChatResponse> {
   const queryLog = createQueryLog(question);
-  
+
   try {
     // ========== STEP 1: Ghost Prompt (Query Refinement) ==========
     let searchQuery = question;
-    
+
     if (isQueryLikelyAmbiguous(question)) {
       const ghostStep = startStep(queryLog, 'Ghost Prompt (Query Refinement)');
       const refined = await refineQueryWithGhostPrompt(question);
       searchQuery = refined.refinedQuery;
       setRefinedQuery(queryLog, searchQuery);
-      endStep(queryLog, ghostStep, { 
-        isAmbiguous: refined.isAmbiguous, 
+      endStep(queryLog, ghostStep, {
+        isAmbiguous: refined.isAmbiguous,
         intent: refined.intent,
-        entities: refined.entities 
+        entities: refined.entities
       });
     }
 
@@ -53,53 +53,60 @@ export async function chatWithDocuments(question: string, topK: number = 10): Pr
     // ========== STEP 3: Check Cache (Parallel with Retrieval) ==========
     const cacheStep = startStep(queryLog, 'Cache Check');
     const cachePromise = checkCache(questionEmbedding);
-    
+
     // ========== STEP 4: Vector Search (Initial Retrieval of 20) ==========
     const retrievalStep = startStep(queryLog, 'Vector Search (Initial 20)');
     const index = await getPineconeIndex();
     const initialTopK = getInitialRetrievalCount();
-    
+
     const resultsPromise = index.query({
       vector: questionEmbedding,
       topK: initialTopK,
       includeMetadata: true,
     });
-    
+
     // Wait for both cache check and retrieval
     const [cachedResult, results] = await Promise.all([cachePromise, resultsPromise]);
     endStep(queryLog, cacheStep, { hit: !!cachedResult });
-    
+
     // If cache hit, use cached results
     if (cachedResult) {
       markCacheHit(queryLog);
       endStep(queryLog, retrievalStep, { status: 'aborted - cache hit' });
-      
+
       // Build response from cached results
-      const sources = cachedResult.retrievalResults.map(doc => ({
-        fileName: doc.metadata.fileName,
-        lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
-        text: doc.metadata.text.substring(0, 200) + '...',
-        score: doc.finalScore
-      }));
-      
-      const contexts = cachedResult.retrievalResults.map(doc => 
-        `[From ${doc.metadata.fileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`
-      );
-      
+      // Build response from cached results
+      const sources = cachedResult.retrievalResults.map(doc => {
+        const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+        const displayFileName = `${folder}${doc.metadata.fileName}`;
+        return {
+          fileName: displayFileName,
+          lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
+          text: doc.metadata.text.substring(0, 200) + '...',
+          score: doc.finalScore
+        };
+      });
+
+      const contexts = cachedResult.retrievalResults.map(doc => {
+        const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+        const displayFileName = `${folder}${doc.metadata.fileName}`;
+        return `[From ${displayFileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`;
+      });
+
       // Still need to call LLM for current question
       const llmStep = startStep(queryLog, 'LLM Response Generation');
       const answer = await generateLLMResponse(question, contexts);
       endStep(queryLog, llmStep);
-      
+
       finalizeQueryLog(queryLog, sources.length);
-      
+
       return {
         answer,
         sources,
         queryLog: buildQueryLogSummary(queryLog)
       };
     }
-    
+
     endStep(queryLog, retrievalStep, { resultsCount: results.matches?.length || 0 });
 
     // ========== STEP 5: Convert to RetrievedDocument format ==========
@@ -119,11 +126,11 @@ export async function chatWithDocuments(question: string, topK: number = 10): Pr
     const rerankedDocs = rerankDocuments(searchQuery, documents, {
       finalResultCount: Math.min(topK, getFinalResultCount())
     });
-    endStep(queryLog, rerankStep, { 
-      inputCount: documents.length, 
-      outputCount: rerankedDocs.length 
+    endStep(queryLog, rerankStep, {
+      inputCount: documents.length,
+      outputCount: rerankedDocs.length
     });
-    
+
     // ========== STEP 7: Add to Cache ==========
     const cacheAddStep = startStep(queryLog, 'Add to Cache');
     addToCache(question, questionEmbedding, rerankedDocs);
@@ -134,14 +141,17 @@ export async function chatWithDocuments(question: string, topK: number = 10): Pr
     const contexts: string[] = [];
 
     for (const doc of rerankedDocs) {
+      const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+      const displayFileName = `${folder}${doc.metadata.fileName}`;
+
       sources.push({
-        fileName: doc.metadata.fileName,
+        fileName: displayFileName,
         lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
         text: doc.metadata.text.substring(0, 200) + '...',
         score: doc.finalScore
       });
 
-      contexts.push(`[From ${doc.metadata.fileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`);
+      contexts.push(`[From ${displayFileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`);
     }
 
     // ========== STEP 9: Generate LLM Response ==========
@@ -169,19 +179,19 @@ export async function chatWithDocumentsStream(
   topK: number = 10
 ): Promise<void> {
   const queryLog = createQueryLog(question);
-  
+
   try {
     // ========== STEP 1: Ghost Prompt (Query Refinement) ==========
     let searchQuery = question;
-    
+
     if (isQueryLikelyAmbiguous(question)) {
       const ghostStep = startStep(queryLog, 'Ghost Prompt (Query Refinement)');
       const refined = await refineQueryWithGhostPrompt(question);
       searchQuery = refined.refinedQuery;
       setRefinedQuery(queryLog, searchQuery);
-      endStep(queryLog, ghostStep, { 
-        isAmbiguous: refined.isAmbiguous, 
-        intent: refined.intent 
+      endStep(queryLog, ghostStep, {
+        isAmbiguous: refined.isAmbiguous,
+        intent: refined.intent
       });
     }
 
@@ -193,40 +203,46 @@ export async function chatWithDocumentsStream(
     // ========== STEP 3: Check Cache + Vector Search (Parallel) ==========
     const cacheStep = startStep(queryLog, 'Cache Check');
     const cachePromise = checkCache(questionEmbedding);
-    
+
     const retrievalStep = startStep(queryLog, 'Vector Search (Initial 20)');
     const index = await getPineconeIndex();
     const initialTopK = getInitialRetrievalCount();
-    
+
     const resultsPromise = index.query({
       vector: questionEmbedding,
       topK: initialTopK,
       includeMetadata: true,
     });
-    
+
     const [cachedResult, results] = await Promise.all([cachePromise, resultsPromise]);
     endStep(queryLog, cacheStep, { hit: !!cachedResult });
-    
+
     let sources: ChatResponse['sources'] = [];
     let contexts: string[] = [];
-    
+
     if (cachedResult) {
       markCacheHit(queryLog);
       endStep(queryLog, retrievalStep, { status: 'aborted - cache hit' });
-      
-      sources = cachedResult.retrievalResults.map(doc => ({
-        fileName: doc.metadata.fileName,
-        lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
-        text: doc.metadata.text.substring(0, 200) + '...',
-        score: doc.finalScore
-      }));
-      
-      contexts = cachedResult.retrievalResults.map(doc => 
-        `[From ${doc.metadata.fileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`
-      );
+
+      sources = cachedResult.retrievalResults.map(doc => {
+        const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+        const displayFileName = `${folder}${doc.metadata.fileName}`;
+        return {
+          fileName: displayFileName,
+          lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
+          text: doc.metadata.text.substring(0, 200) + '...',
+          score: doc.finalScore
+        };
+      });
+
+      contexts = cachedResult.retrievalResults.map(doc => {
+        const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+        const displayFileName = `${folder}${doc.metadata.fileName}`;
+        return `[From ${displayFileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`;
+      });
     } else {
       endStep(queryLog, retrievalStep, { resultsCount: results.matches?.length || 0 });
-      
+
       // Convert and rerank
       const documents: RetrievedDocument[] = (results.matches || []).map(match => ({
         id: match.id,
@@ -243,22 +259,25 @@ export async function chatWithDocumentsStream(
       const rerankedDocs = rerankDocuments(searchQuery, documents, {
         finalResultCount: Math.min(topK, getFinalResultCount())
       });
-      endStep(queryLog, rerankStep, { 
-        inputCount: documents.length, 
-        outputCount: rerankedDocs.length 
+      endStep(queryLog, rerankStep, {
+        inputCount: documents.length,
+        outputCount: rerankedDocs.length
       });
-      
+
       // Add to cache
       addToCache(question, questionEmbedding, rerankedDocs);
 
       for (const doc of rerankedDocs) {
+        const folder = doc.metadata.folder ? `${doc.metadata.folder}/` : '';
+        const displayFileName = `${folder}${doc.metadata.fileName}`;
+
         sources.push({
-          fileName: doc.metadata.fileName,
+          fileName: displayFileName,
           lineNumber: parseInt(doc.metadata.lineNumber || '0', 10),
           text: doc.metadata.text.substring(0, 200) + '...',
           score: doc.finalScore
         });
-        contexts.push(`[From ${doc.metadata.fileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`);
+        contexts.push(`[From ${displayFileName}, line ${doc.metadata.lineNumber}]: ${doc.metadata.text}`);
       }
     }
 
@@ -291,7 +310,7 @@ If the answer cannot be found in the provided context, say so clearly.`;
     };
 
     const llmStep = startStep(queryLog, 'LLM Response Generation (Streaming)');
-    
+
     await chatWithDeepSeekStream(
       messages,
       (chunk) => {
@@ -304,10 +323,10 @@ If the answer cannot be found in the provided context, say so clearly.`;
       () => {
         endStep(queryLog, llmStep);
         finalizeQueryLog(queryLog, sources.length);
-        
+
         try {
           res.write(`event: done\n`);
-          res.write(`data: ${JSON.stringify({ 
+          res.write(`data: ${JSON.stringify({
             sources,
             queryLog: buildQueryLogSummary(queryLog)
           })}\n\n`);

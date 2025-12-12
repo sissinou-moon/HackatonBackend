@@ -102,6 +102,14 @@ export async function chatWithDeepSeekStream(
       return -1;
     };
 
+    let isFinished = false;
+    const safeOnDone = () => {
+      if (!isFinished) {
+        isFinished = true;
+        if (onDone) onDone();
+      }
+    };
+
     stream.on('data', (chunk: any) => {
       logger.log('DeepSeek Stream Raw Chunk:', chunk.toString());
       try {
@@ -113,7 +121,7 @@ export async function chatWithDeepSeekStream(
           if (!buffer) break;
 
           if (buffer.startsWith('data: [DONE]')) {
-            if (onDone) onDone();
+            safeOnDone();
             buffer = buffer.slice(12);
             continue;
           }
@@ -164,12 +172,12 @@ export async function chatWithDeepSeekStream(
                 onChunk(content);
               }
               if (choice?.finish_reason) {
-                if (choice.finish_reason === 'stop' && onDone) onDone();
+                if (choice.finish_reason === 'stop') safeOnDone();
               }
             }
           } else {
             if (parsed?.usage || parsed?.id) {
-              if (onDone) onDone();
+              safeOnDone();
             }
           }
         }
@@ -180,12 +188,12 @@ export async function chatWithDeepSeekStream(
 
     stream.on('end', () => {
       logger.log('DeepSeek Stream Full Response (Accumulated):', fullContent);
-      if (onDone) onDone();
+      safeOnDone();
     });
 
     stream.on('error', (err: any) => {
       logger.error('DeepSeek stream error:', err);
-      if (onDone) onDone();
+      safeOnDone();
     });
   } catch (error: any) {
     logger.error('DeepSeek streaming error:', error.response?.data || error.message);

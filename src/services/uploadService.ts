@@ -10,25 +10,58 @@ import path from 'path';
 export interface UploadResult {
   success: boolean;
   fileName: string;
+  folder?: string;
+  storagePath?: string;
   chunksCount: number;
   message: string;
 }
 
-export async function uploadDocument(filePath: string, fileName: string): Promise<UploadResult> {
+function sanitizeFileName(filename: string): string {
+  // Remove accents (é → e, ç → c…)
+  const noAccents = filename.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Replace all invalid characters with "_"
+  const clean = noAccents.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return clean;
+}
+
+function sanitizeFolderName(folderName: string): string {
+  // Remove accents and invalid characters, allow only alphanumeric, underscore, hyphen
+  const noAccents = folderName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const clean = noAccents.replace(/[^a-zA-Z0-9_-]/g, "_");
+  // Remove leading/trailing underscores
+  return clean.replace(/^_+|_+$/g, "");
+}
+
+export async function uploadDocument(
+  filePath: string,
+  fileName: string,
+  folderName?: string
+): Promise<UploadResult> {
   try {
+    // --- Sanitize filename BEFORE any logic ---
+    const safeFileName = sanitizeFileName(fileName);
+    const uniqueFileName = `${Date.now()}-${safeFileName}`;
+    const fileExt = path.extname(safeFileName);
+
+    // Sanitize folder name if provided
+    const safeFolder = folderName ? sanitizeFolderName(folderName) : undefined;
+
+    // Build the storage path: folder/uniqueFileName or just uniqueFileName
+    const storagePath = safeFolder
+      ? `${safeFolder}/${uniqueFileName}`
+      : uniqueFileName;
+
     // 1. Parse the document
-    logger.log(`Parsing document: ${fileName}`);
-    const parsedDoc = await parseDocument(filePath, fileName);
+    logger.log(`Parsing document: ${safeFileName}`);
+    const parsedDoc = await parseDocument(filePath, safeFileName);
 
     // 2. Upload to Supabase storage
-    logger.log(`Uploading to Supabase: ${fileName}`);
+    logger.log(`Uploading to Supabase: ${storagePath}`);
     const fileBuffer = await fs.readFile(filePath);
-    const fileExt = path.extname(fileName);
-    const uniqueFileName = `${Date.now()}-${fileName}`;
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(uniqueFileName, fileBuffer, {
+      .upload(storagePath, fileBuffer, {
         contentType: fileExt === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         upsert: false,
       });
@@ -38,8 +71,8 @@ export async function uploadDocument(filePath: string, fileName: string): Promis
     }
 
     // 3. Chunk the text
-    logger.log(`Chunking text for: ${fileName}`);
-    const chunks = chunkText(parsedDoc.lines, fileName);
+    logger.log(`Chunking text for: ${safeFileName}`);
+    const chunks = chunkText(parsedDoc.lines, safeFileName);
 
     // 4. Generate embeddings
     logger.log(`Generating embeddings for ${chunks.length} chunks...`);
@@ -51,10 +84,12 @@ export async function uploadDocument(filePath: string, fileName: string): Promis
     const index = await getPineconeIndex();
 
     const vectors = chunks.map((chunk, idx) => ({
-      id: `${fileName}-chunk-${idx}`,
+      id: `${storagePath}-chunk-${idx}`, // Use storage path for unique ID including folder
       values: embeddings[idx],
       metadata: {
         fileName: chunk.fileName,
+        folder: safeFolder || "",
+        storagePath: storagePath,
         lineNumber: chunk.lineNumber.toString(),
         chunkIndex: chunk.chunkIndex.toString(),
         text: chunk.text,
@@ -74,9 +109,11 @@ export async function uploadDocument(filePath: string, fileName: string): Promis
 
     return {
       success: true,
-      fileName,
+      fileName: safeFileName,
+      folder: safeFolder,
+      storagePath: storagePath,
       chunksCount: chunks.length,
-      message: `Successfully uploaded and processed ${fileName}`,
+      message: `Successfully uploaded and processed ${safeFileName}${safeFolder ? ` in folder "${safeFolder}"` : ""}`,
     };
   } catch (error) {
     logger.error('Upload error:', error);

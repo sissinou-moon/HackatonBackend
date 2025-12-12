@@ -46,13 +46,18 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const result = await uploadDocument(req.file.path, req.file.originalname);
+    // Get optional folder from request body (can be new or existing folder name)
+    const folder = (req.body.folder || req.body.folderName) as string | undefined;
+
+    const result = await uploadDocument(req.file.path, req.file.originalname, folder);
 
     if (result.success) {
       res.json({
         success: true,
         message: result.message,
         fileName: result.fileName,
+        folder: result.folder,
+        storagePath: result.storagePath,
         chunksCount: result.chunksCount,
       });
     } else {
