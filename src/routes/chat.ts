@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { chatWithDocuments } from '../services/chatService';
+import { chatWithDocuments, chatWithDocumentsStream } from '../services/chatService';
 
 const router = express.Router();
 
@@ -9,6 +9,16 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (!question || typeof question !== 'string') {
       return res.status(400).json({ error: 'Question is required and must be a string' });
+    }
+
+    // If client accepts event-stream (streaming), use streaming handler
+    const accept = req.headers['accept'] || '';
+    const wantsStream = typeof accept === 'string' && accept.includes('text/event-stream');
+
+    if (wantsStream || req.query.stream === 'true') {
+      // Use streaming path
+      await chatWithDocumentsStream(question, res, topK || 3);
+      return;
     }
 
     const result = await chatWithDocuments(question, topK || 3);
