@@ -9,12 +9,19 @@ const router = Router();
  */
 router.post('/register', async (req: Request, res: Response) => {
     try {
-        const { email, password, metadata } = req.body;
+        const { email, password, role, name, metadata } = req.body;
 
-        if (!email || !password) {
+        if (!email || !password || !role || !name) {
             return res.status(400).json({
                 success: false,
-                error: 'Email and password are required',
+                error: 'Email, password, role, and name are required',
+            });
+        }
+
+        if (role !== 'agent' && role !== 'manager') {
+            return res.status(400).json({
+                success: false,
+                error: 'Role must be either "agent" or "manager"',
             });
         }
 
@@ -22,7 +29,11 @@ router.post('/register', async (req: Request, res: Response) => {
             email,
             password,
             options: {
-                data: metadata || {},
+                data: {
+                    ...(metadata || {}),
+                    role,
+                    name,
+                },
             },
         });
 
