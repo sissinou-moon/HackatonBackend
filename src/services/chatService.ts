@@ -185,9 +185,14 @@ export async function chatWithDocumentsStream(
     let searchQuery = question;
 
     if (isQueryLikelyAmbiguous(question)) {
+      const ghostStep = startStep(queryLog, 'Ghost Prompt (Query Refinement)');
       const refined = await refineQueryWithGhostPrompt(question);
       searchQuery = refined.refinedQuery;
       setRefinedQuery(queryLog, searchQuery);
+      endStep(queryLog, ghostStep, {
+        isAmbiguous: refined.isAmbiguous,
+        intent: refined.intent
+      });
     }
 
     // ========== STEP 2: Generate Embedding ==========
