@@ -1,5 +1,5 @@
 import express, { Request, Response, Router } from 'express';
-import { supabase, BUCKET_NAME } from '../config/supabase';
+import { supabaseAdmin, BUCKET_NAME } from '../config/supabase';
 import logger from '../utils/logger';
 
 const router: Router = express.Router();
@@ -13,7 +13,7 @@ router.get('/:fileName', async (req: Request, res: Response) => {
     }
 
     // Download file from Supabase storage
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .download(fileName);
 
@@ -52,7 +52,7 @@ router.get('/:fileName', async (req: Request, res: Response) => {
 // List all files in the bucket
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .list();
 

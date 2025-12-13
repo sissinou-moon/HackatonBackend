@@ -38,6 +38,8 @@ app.get('/', (req, res) => {
     message: 'RAG Chatbot API - Algerie Telecom',
     endpoints: {
       upload: 'POST /api/upload',
+      uploadMultiple: 'POST /api/upload/multiple',
+      uploadPineconeOnly: 'POST /api/upload/re-pinecone',
       chat: 'POST /api/chat',
       download: 'GET /api/download/:fileName',
       listFiles: 'GET /api/download',

@@ -284,8 +284,8 @@ export async function chatWithDocumentsStream(
     // ========== STEP: Build prompt and stream ==========
     const contextText = contexts.join('\n\n');
     const systemPrompt = `You are a helpful assistant for Algerie Telecom that answers questions based on the provided document context. 
-Always cite the source file name and line number when referencing information from the documents.
-If the answer cannot be found in the provided context, say so clearly.`;
+Don't cite the source file name and line number.
+If the answer cannot be found in the provided context, say so clearly. Also answer with the same language as the question.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -353,8 +353,8 @@ If the answer cannot be found in the provided context, say so clearly.`;
 async function generateLLMResponse(question: string, contexts: string[]): Promise<string> {
   const contextText = contexts.join('\n\n');
   const systemPrompt = `You are a helpful assistant for Algerie Telecom that answers questions based on the provided document context. 
-Always cite the source file name and line number when referencing information from the documents.
-If the answer cannot be found in the provided context, say so clearly.`;
+Don't cite the source file name and line number.
+If the answer cannot be found in the provided context, say so clearly. Also answer with the same language as the question.`;
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
