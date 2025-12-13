@@ -11,8 +11,8 @@ export const pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY,
 });
 
-export const INDEX_NAME = process.env.PINECONE_INDEX || 'realdata';
-export const INDEX_HOST = process.env.PINECONE_HOST || 'https://realdata-6wbd61w.svc.aped-4627-b74a.pinecone.io';
+export const INDEX_NAME = 'realdata';
+export const INDEX_HOST = 'https://realdata-6wbd61w.svc.aped-4627-b74a.pinecone.io';
 
 export async function getPineconeIndex() {
     const index = pinecone.index(INDEX_NAME, INDEX_HOST);
